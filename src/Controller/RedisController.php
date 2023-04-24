@@ -381,7 +381,7 @@ class RedisController extends AbstractController
                 }
             }
             $pubsub->unsubscribe();
-            sleep(1);
+            //sleep(1);
         });
         
         $response->send();

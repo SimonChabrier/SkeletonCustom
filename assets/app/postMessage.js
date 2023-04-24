@@ -8,7 +8,7 @@ export const postMessage = async () => {
 
 // add observer objet on /redis/consume/1 to append message to messages list dynamically
 export const observer = () => {
-    const eventSource = new EventSource("https://127.0.0.1:8000/stream");
+    const eventSource = new EventSource("https://127.0.0.1:8000/stream", { withCredentials: true });
     console.log(eventSource);
     
     eventSource.onmessage = event => {
@@ -20,7 +20,13 @@ export const observer = () => {
       li.innerText = response;
       messages.appendChild(li);
     }
-}  
+    // on maintient le stream ouvert tant que l'utilisateur est connecté
+    eventSource.onerror = error => {
+      console.log("EventSource error", error);
+      eventSource.close();
+      observer();
+    }
+  }
 
 
 

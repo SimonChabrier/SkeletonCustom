@@ -6,6 +6,7 @@
 
 import { postMessage, observer } from "./app/postMessage";
 
+// on initialise l'observer dès le chargement de la page
 observer()
 
 document.getElementById('submitBtn').addEventListener('click', (e) => { 
