@@ -360,7 +360,7 @@ class RedisController extends AbstractController
         // set headers
         $response->headers->set('Content-Type', 'text/event-stream');
         $response->headers->set('Cache-Control', 'no-cache');
-        $response->headers->set('Connection', 'keep-alive');
+        //$response->headers->set('Connection', 'keep-alive');
         $response->headers->set('X-Accel-Buffering', 'no');
         // set callback
         $response->setCallback(function () {
@@ -381,12 +381,14 @@ class RedisController extends AbstractController
                 }
             }
             $pubsub->unsubscribe();
-            sleep(1);
+            //sleep(1);
         });
         // si pas de réponse envoyé au bout de 30 secondes, on coupe la connexion
         // il faut envoyer une réponse vide pour garder la connexion ouverte côté client 
-
+        //dump('stream response');
         $response->send();
+        // stop headers from being sent
+        //return $response;
     }
 
 }

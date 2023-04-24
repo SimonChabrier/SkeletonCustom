@@ -8,18 +8,27 @@ export const postMessage = async () => {
 
 // add observer objet on /redis/consume/1 to append message to messages list dynamically
 export const observer = () => {
+    // on écoute la réponse du controller RedisController.php / streamResponse()
     const eventSource = new EventSource("https://127.0.0.1:8000/stream");
     //console.log(eventSource);
     
     eventSource.onmessage = event => {
       //console.log(event.data);
       console.log('event');
-      const response = event.data;
+      let response = event.data;
       //console.log(response);
       const messages = document.getElementById("messages");
       const li = document.createElement("li");
       li.innerText = response;
       messages.appendChild(li);
+      // fermer la connexion si un message est reçu
+      //eventSource.close();
+      // évaluer si la connexion est fermée
+      //if(eventSource.readyState === 2){
+        //console.log('La connexion a été fermée.');
+        //observer(); // Relance l'observation
+      //}
+
     }
     // on relance tout de suite une nouvelle insatance de l'observer
     // si la connexion est fermée ce qui se produit après 60 secondes d'inactivité
