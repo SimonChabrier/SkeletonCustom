@@ -1,0 +1,21 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <h3>Messages publié dans Redis et stockés aussi en BDD</h3>
+    <div>
+    <ol id="messages">
+    {% if messages is not empty %}
+    {% for message in messages %}
+        <li>{{ message.content }}</li>
+    {% endfor %}
+    {% else %}
+        <li>Pas de message.</li>
+    {% endif %}
+    </ol>
+    </div>
+    <h3>Envoyer un message</h3>
+    <form>
+        <input type="text" id="messageInput" />
+        <button type="submit" id="submitBtn">Send</button>
+    </form>
+{% endblock %}
