@@ -5,27 +5,28 @@ namespace App\Controller;
 use Predis\Client;
 use Predis\PubSub\Consumer;
 use App\Message\RedisMessage;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Request;
 
 class RedisController extends AbstractController
 {
     private $redis;
-    private $serializer;
 
     public function __construct(Client $redis)
     {
-        $this->redis = $redis;    
+        $this->redis = $redis;
     }
 
     /**
      * @Route("/redis", name="app_redis")
      */
     public function index(): Response
-    {   
+    {
         try {
             $this->redis->ping();
             $message = 'Redis connection successful!';
@@ -76,27 +77,27 @@ class RedisController extends AbstractController
 
     /**
      * Create new Canal in Redis
-     * @Route("/redis/canal/create/{id}", name="app_redis_canal")
+     * @Route("/redis/channel/create/{id}", name="app_redis_canal")
      */
     public function createChannel($id): Response
-    {   
+    {
         $key = 'channel-' . $id;
-        
+
         $this->redis->sadd('channel', $key);
-        $message = 'Redis canal created! ' . $key; 
+        $message = 'Redis canal created! ' . $key;
 
         return new Response(json_encode($message));
     }
-    
+
     /**
      * Get all Canals data in Redis
      * @Route("/redis/channel/list", name="app_redis_canal_get")
      */
     public function getAllChannels(): Response
-    {           
+    {
         // on récupère tous les canaux
         $channels = $this->redis->smembers('channel');
-        
+
         // si la liste des canaux est vide
         if (empty($channels)) {
             $message = 'Aucun canal créé actuellement';
@@ -121,10 +122,10 @@ class RedisController extends AbstractController
      * @Route("/redis/publish/{id}", name="app_redis_publish", methods={"GET", "POST"})
      */
     public function publish($id, MessageBusInterface $bus, Request $request): Response
-    {   
+    {
         $messages = [];
         $errors = [];
-        
+
         // if ($request->isMethod('GET')) {
         //     return $this->render('redis/index.html.twig', [
         //         'id' => $id,
@@ -142,21 +143,22 @@ class RedisController extends AbstractController
             // test de la connexion à Redis
             $this->redis->ping();
             $messages[] = 'Connection à Redis - ok';
-            
+
             // publish envoi le message à tous les subscribers du canal
-            $this->redis->publish('channel-' . $id , 'Publication directe dans le canal ' . $id . '!');
+            //$this->redis->publish('channel-' . $id , 'Publication directe dans le canal ' . $id . '!');
+            $this->redis->publish('channel-' . $id, $formMessage);
             $messages[] = 'Publication directe sur un canal Redis - ok';
-            
+
             // dispatch avec messenger pour utiliser l'async
             $bus->dispatch(new RedisMessage('channel-' . $id, $formMessage));
             $messages[] = 'Dispatch sur Messenger - ok';
-            
+
             // lpush persiste le message dans la bdd redis
-            $this->redis->lpush('channel-' . $id , $formMessage);
+            $this->redis->lpush('channel-' . $id, $formMessage);
             //$messages[] = 'Persisté dans la BDD de Redis - ok';
             $messages[] = $formMessage;
 
-            
+
         } catch (\Exception $e) {
             $errors[] = $e->getMessage();
         }
@@ -179,11 +181,11 @@ class RedisController extends AbstractController
 
     /**
      * Subscribe to a channel in Redis in raw
-     * @Route("/redis/subscribe/raw", name="app_redis_subscribe_raw")
+     * @Route("/redis/channel/subscribe/raw", name="app_redis_subscribe_raw")
      */
     public function subscribeRaw(): Response
-    {   
-        
+    {
+
         dump($this->redis->executeRaw(['SMEMBERS', 'channel']));
         $channels = $this->redis->executeRaw(['SMEMBERS', 'channel']);
         // subscribe to a channel in redis
@@ -207,11 +209,11 @@ class RedisController extends AbstractController
 
     /**
      * Subscribe to a channel in Redis
-     * 
-     * @Route("/redis/subscribe/{id}", name="app_redis_subscribe")
+     *
+     * @Route("/redis/channel/subscribe/{id}", name="app_redis_subscribe")
      */
     public function subscribe($id): Response
-    {   
+    {
         // subscribe to a channel in redis
         $consumer = new Consumer($this->redis);
         $consumer->getClient()->connect();
@@ -228,10 +230,10 @@ class RedisController extends AbstractController
 
     /**
      * Consume a channel in Redis
-     * @Route("/redis/consume/{id}", name="app_redis_consume", methods={"GET", "POST"})
+     * @Route("/redis/consume/{id}", name="app_redis_consume", methods={"GET"})
      */
-    public function pubSub($id): Response 
-    {   
+    public function pubSub($id): Response
+    {
         // je crée un nouveau contexte pubsub en utilisant la class AbstractConsumer
         // et la méthode pubSubLoop sur mon client redis
         $pubsub = $this->redis->pubSubLoop();
@@ -244,9 +246,14 @@ class RedisController extends AbstractController
                 // j'annule l'abonnement au canal pour ne pas rester en écoute permanente
                 $pubsub->unsubscribe();
                 // je retourne le message
-                return new Response('OK !<br>Message reçu :<br>' . $message->payload);
+                //return new Response($message->payload);
+
+                return new JsonResponse($message->payload);
             }
-        }    
+        }
+
+        return new JsonResponse('Redis consume failed!');
+
     }
 
     /**
@@ -254,7 +261,7 @@ class RedisController extends AbstractController
      * @Route("/redis/channel/delete", name="app_redis_delcanal")
      */
     public function removeAllChannels(): Response
-    {   
+    {
         // delete a channel in redis
         try {
             $this->redis->ping();
@@ -270,18 +277,48 @@ class RedisController extends AbstractController
         if ($message == 'Redis connection successful!') {
             try {
                 $channels = $this->redis->smembers('channel');
-               
+
                 foreach ($channels as $channel) {
                     // remove each channel from set
                     $this->redis->srem('channel', $channel);
                 }
-                
+
             } catch (\Exception $e) {
                 $message = 'Redis del canal failed: ' . $e->getMessage();
             }
         }
-        
+
         return new Response('Redis del canal successful!' . ' - ' . $message);
+    }
+
+
+    /**
+     * Flush all Redis
+     * @Route("/redis/flush", name="app_redis_flush")
+     */
+    public function flushAll(): Response
+    {
+        // flush all redis
+        try {
+            $this->redis->ping();
+            $message = 'Redis connection successful!';
+        } catch (\Exception $e) {
+            $message = 'Redis connection failed: ' . $e->getMessage();
+        }
+
+        if(!$message === 'Redis connection successful!') {
+            return new Response('Redis flush failed!' . ' - ' . $message);
+        }
+
+        if ($message == 'Redis connection successful!') {
+            try {
+                $this->redis->flushall();
+            } catch (\Exception $e) {
+                $message = 'Redis flush failed: ' . $e->getMessage();
+            }
+        }
+
+        return new Response('Redis flush successful!' . ' - ' . $message);
     }
 
     /**
@@ -289,7 +326,7 @@ class RedisController extends AbstractController
      * @Route("/redis/test", name="app_redis_test")
      */
     public function test(): Response
-    {   
+    {
         // test a channel in redis
         try {
             $this->redis->ping();
@@ -309,8 +346,46 @@ class RedisController extends AbstractController
                 $message = 'Redis test failed: ' . $e->getMessage();
             }
         }
-        
+
         return new Response('Redis test successful!' . ' - ' . $message);
     }
 
+    /**
+     * Stream response in text/event-stream
+     * @Route("/stream", name="app_stream", methods={"GET"})
+     */
+    public function streamResponse()
+    {
+        $response = new StreamedResponse();
+        // set headers
+        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Cache-Control', 'no-cache');
+        $response->headers->set('Connection', 'keep-alive');
+        $response->headers->set('X-Accel-Buffering', 'no');
+        // set callback
+        $response->setCallback(function () {
+            // create redis client
+            $pubsub = $this->redis->pubSubLoop();
+            // subscribe to channel
+            $pubsub->subscribe('channel-1');
+            // loop through messages received
+            foreach ($pubsub as $message) {
+                // check if message is valid
+                if ($message->kind === 'message') {
+                    // unsubscribe from channel to stop listening
+                    $pubsub->unsubscribe('channel-1');
+                    // return message
+                    echo "data: {$message->payload}\n\n";
+                    flush();
+                    return;
+                }
+            }
+            $pubsub->unsubscribe();
+            sleep(1);
+        });
+        
+        $response->send();
+    }
+
 }
+

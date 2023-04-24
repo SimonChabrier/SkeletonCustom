@@ -4,10 +4,11 @@
 // start the Stimulus application
 // import './bootstrap';
 
-import { postMessage, appendMessage } from "./app/postMessage";
+import { postMessage, observer } from "./app/postMessage";
+
+observer()
 
 document.getElementById('submitBtn').addEventListener('click', (e) => { 
     e.preventDefault(); 
     postMessage(); 
-    appendMessage(document.getElementById("messageInput").value);
 });
