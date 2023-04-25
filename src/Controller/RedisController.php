@@ -5,6 +5,7 @@ namespace App\Controller;
 use Predis\Client;
 use Predis\PubSub\Consumer;
 use App\Message\RedisMessage;
+use App\Repository\MessageRepository;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -141,22 +142,22 @@ class RedisController extends AbstractController
 
         try {
             // test de la connexion à Redis
-            $this->redis->ping();
-            $messages[] = 'Connection à Redis - ok';
+            // $this->redis->ping();
+            // $messages[] = 'Connection à Redis - ok';
 
             // publish envoi le message à tous les subscribers du canal
             //$this->redis->publish('channel-' . $id , 'Publication directe dans le canal ' . $id . '!');
-            $this->redis->publish('channel-' . $id, $formMessage);
-            $messages[] = 'Publication directe sur un canal Redis - ok';
+            // $this->redis->publish('channel-' . $id, $formMessage);
+            // $messages[] = 'Publication directe sur un canal Redis - ok';
 
             // dispatch avec messenger pour utiliser l'async
             $bus->dispatch(new RedisMessage('channel-' . $id, $formMessage));
             $messages[] = 'Dispatch sur Messenger - ok';
 
-            // lpush persiste le message dans la bdd redis
-            $this->redis->lpush('channel-' . $id, $formMessage);
-            //$messages[] = 'Persisté dans la BDD de Redis - ok';
-            $messages[] = $formMessage;
+            // // lpush persiste le message dans la bdd redis
+            // $this->redis->lpush('channel-' . $id, $formMessage);
+            // //$messages[] = 'Persisté dans la BDD de Redis - ok';
+            // $messages[] = $formMessage;
 
 
         } catch (\Exception $e) {
@@ -350,46 +351,52 @@ class RedisController extends AbstractController
         return new Response('Redis test successful!' . ' - ' . $message);
     }
 
-    /**
-     * Stream response in text/event-stream
-     * @Route("/stream", name="app_stream", methods={"GET"})
+     /**
+     * @Route("/stream", name="app_stream", methods={"GET"}, defaults={"waitTime"=1})
      */
     public function streamResponse()
-    {
-        $response = new StreamedResponse();
-        // set headers
-        $response->headers->set('Content-Type', 'text/event-stream');
-        $response->headers->set('Cache-Control', 'no-cache');
-        //$response->headers->set('Connection', 'keep-alive');
-        $response->headers->set('X-Accel-Buffering', 'no');
-        // set callback
-        $response->setCallback(function () {
-            // create redis client
-            $pubsub = $this->redis->pubSubLoop();
-            // subscribe to channel
-            $pubsub->subscribe('channel-1');
-            // loop through messages received
-            foreach ($pubsub as $message) {
-                // check if message is valid
-                if ($message->kind === 'message') {
-                    // unsubscribe from channel to stop listening
-                    $pubsub->unsubscribe('channel-1');
-                    // return message
-                    echo "data: {$message->payload}\n\n";
-                    flush();
-                    return;
-                }
+{
+    $response = new StreamedResponse();
+    //set headers
+    $response->headers->set('Content-Type', 'text/event-stream');
+    $response->headers->set('Cache-Control', 'no-cache');
+    //$response->headers->set('Connection', 'keep-alive');
+    $response->headers->set('X-Accel-Buffering', 'no');
+    //set callback
+
+    $i = 1; // initialiser i à 1
+
+    $response->setCallback(function () use (&$i) {
+
+        if ($i <= 0) {
+            return;
+        } // si i est inférieur ou égal à 0, on arrête la boucle
+        
+        // create redis client
+        $pubsub = $this->redis->pubSubLoop();
+        // subscribe to channel
+        $pubsub->subscribe('channel-1');
+        // loop through messages received
+        foreach ($pubsub as $message) {
+            // check if message is valid
+            if ($message->kind === 'message') {
+                // unsubscribe from channel to stop listening
+                $pubsub->unsubscribe('channel-1');
+                // return message
+                echo "data: {$message->payload}\n\n";
+                ob_flush();
+                flush();
+                break;
             }
-            $pubsub->unsubscribe();
-            //sleep(1);
-        });
-        // si pas de réponse envoyé au bout de 30 secondes, on coupe la connexion
-        // il faut envoyer une réponse vide pour garder la connexion ouverte côté client 
-        //dump('stream response');
-        $response->send();
-        // stop headers from being sent
-        //return $response;
-    }
+            $i = 0; // remettre i à 0 après le tour de boucle
+        }
+        $pubsub->unsubscribe();
+        //sleep(1);
+    });
+    
+    //send response
+    return $response;
+}
 
 }
 
